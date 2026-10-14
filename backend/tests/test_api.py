@@ -13,6 +13,27 @@ def anyio_backend():
     return "asyncio"
 
 
+class _FakeVectorDB:
+    """In-memory stand-in for ChromaDBClient: no embedding model, no disk access."""
+
+    async def query(self, query_text, n_results=5):
+        return [
+            {
+                "content": "Pro plan costs $29/month.",
+                "metadata": {"source": "pricing.md", "chunk_index": 0},
+                "distance": 0.12,
+            }
+        ]
+
+
+@pytest.fixture
+def fake_db_client(monkeypatch):
+    """Patch the vector store so /search never loads a model or touches backend/data."""
+    fake = _FakeVectorDB()
+    monkeypatch.setattr("app.api.routes.search.get_db_client", lambda: fake)
+    return fake
+
+
 @pytest.mark.anyio
 async def test_root():
     transport = ASGITransport(app=app)
@@ -69,7 +90,7 @@ async def test_search_requires_admin_key(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_search_valid(monkeypatch):
+async def test_search_valid(monkeypatch, fake_db_client):
     monkeypatch.setattr(settings, "ADMIN_API_KEY", "test-admin-key")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -82,3 +103,5 @@ async def test_search_valid(monkeypatch):
     data = response.json()
     assert "results" in data
     assert "query" in data
+    assert data["total"] == 1
+    assert data["results"][0]["source"] == "pricing.md"
