@@ -120,7 +120,7 @@ Use Let's Encrypt with certbot or deploy behind a cloud load balancer with manag
 
 In production, always set:
 - `CORS_ORIGINS` to your specific domain(s)
-- `SITE_TOKENS` to one `site:token` pair per embedding site (this enforces `X-Site-Key` on `POST /chat`; leave empty only for local development)
+- `SITE_TOKENS` to one credential per embedding site — `site:token` or, preferably, `site:token:https://your-site.com|https://www.your-site.com` (this enforces `X-Site-Key` on `POST /chat`; leave empty only for local development)
 - `ADMIN_API_KEY` to a strong, unique value
 - `VITE_API_URL` to the public HTTPS URL of the backend before `docker compose up --build`
 - `DEBUG=false`
@@ -128,6 +128,25 @@ In production, always set:
 
 The built browser bundle cannot use an internal Docker hostname such as
 `http://backend:8000`; it must use a URL reachable from visitors' browsers.
+
+### Site keys and origin binding
+
+The widget's key is delivered in the browser bundle, so anyone can read and
+copy it. `SITE_TOKENS` therefore supports binding a token to the origins allowed
+to use it:
+
+```
+# site:token                    — accepted from any origin (backward compatible)
+# site:token:origin1|origin2    — accepted only from those origins
+SITE_TOKENS=acme:key1:https://acme.com|https://shop.acme.com,beta:key2
+```
+
+A bound token requires a matching `Origin` header: a request from any other
+origin, or with no `Origin` header at all, is refused with `403`. Tokens must not
+contain `:` (the second colon starts the origin list). Origins are listed with
+`|` and a trailing slash is ignored. Because `Origin` can be forged by a
+non-browser client, origin binding protects against a copied key being reused
+from someone else's website — it is not a substitute for a real secret.
 
 ### Scaling
 

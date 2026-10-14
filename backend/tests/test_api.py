@@ -86,6 +86,43 @@ async def test_chat_invalid_site_key_is_unauthorized(monkeypatch):
     assert response.status_code == 401
 
 
+class _FakeRAGEngine:
+    """Yields one complete turn so /chat can stream without a provider or model."""
+
+    async def query_stream(self, user_query, conversation_history, conversation_id):
+        yield {"type": "meta", "conversation_id": conversation_id or "conv-1"}
+        yield {"type": "content", "content": "Hello from the assistant"}
+        yield {"type": "done"}
+
+
+@pytest.mark.anyio
+async def test_chat_site_key_bound_to_matching_origin_is_allowed(monkeypatch):
+    monkeypatch.setattr(settings, "SITE_TOKENS", "acme:secret-token:https://acme.com")
+    monkeypatch.setattr("app.api.routes.chat.get_rag_engine", lambda: _FakeRAGEngine())
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/chat",
+            headers={"X-Site-Key": "secret-token", "Origin": "https://acme.com"},
+            json={"query": "hello"},
+        )
+    assert response.status_code == 200
+    assert "Hello from the assistant" in response.text
+
+
+@pytest.mark.anyio
+async def test_chat_site_key_bound_to_other_origin_is_forbidden(monkeypatch):
+    monkeypatch.setattr(settings, "SITE_TOKENS", "acme:secret-token:https://acme.com")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/chat",
+            headers={"X-Site-Key": "secret-token", "Origin": "https://copycat.example"},
+            json={"query": "hello"},
+        )
+    assert response.status_code == 403
+
+
 # --- CORS preflight ---
 # The widget sends `X-Site-Key`, so the browser preflights POST /chat first.
 

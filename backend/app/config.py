@@ -120,8 +120,10 @@ class Settings(BaseSettings):
     SITE_TOKENS: str = Field(
         default="",
         description=(
-            "Comma-separated 'site:token' pairs for per-site chat access "
-            "(e.g. 'acme:key1,beta:key2'). When empty, POST /chat is open."
+            "Comma-separated site credentials for per-site chat access: "
+            "'site:token' or 'site:token:origin1|origin2' "
+            "(e.g. 'acme:key1:https://acme.com,beta:key2'). When empty, "
+            "POST /chat is open. Tokens must not contain ':'."
         ),
     )
     ALLOW_CUSTOM_INGEST_DIRECTORY: bool = Field(
@@ -157,21 +159,47 @@ class Settings(BaseSettings):
         return origins
 
     @property
-    def site_tokens_map(self) -> dict[str, str]:
-        """Parse SITE_TOKENS into {token: site} for per-site chat authorization."""
-        mapping: dict[str, str] = {}
+    def site_token_entries(self) -> dict[str, tuple[str, tuple[str, ...]]]:
+        """Parse SITE_TOKENS into {token: (site, allowed_origins)}.
+
+        Entries are `site:token` or `site:token:origin1|origin2`. The origin
+        part is optional, so existing `site:token` configurations keep working
+        unchanged (an unbounded token is accepted from any origin).
+        """
+        mapping: dict[str, tuple[str, tuple[str, ...]]] = {}
         for entry in self.SITE_TOKENS.split(","):
             entry = entry.strip()
             if not entry:
                 continue
-            site, sep, token = entry.partition(":")
-            site, token = site.strip(), token.strip()
-            if not sep or not site or not token:
+            site, sep, rest = entry.partition(":")
+            site = site.strip()
+            if not sep or not site:
                 raise ValueError(
-                    "SITE_TOKENS entries must be 'site:token' pairs separated by commas."
+                    "SITE_TOKENS entries must be 'site:token' or "
+                    "'site:token:origin1|origin2', separated by commas."
                 )
-            mapping[token] = site
+            token, has_origins, origin_field = rest.partition(":")
+            token = token.strip()
+            if not token:
+                raise ValueError("SITE_TOKENS entries must include a token.")
+            origins: tuple[str, ...] = ()
+            if has_origins:
+                listed = [origin.strip().rstrip("/") for origin in origin_field.split("|")]
+                if any(not origin for origin in listed):
+                    raise ValueError(
+                        "The SITE_TOKENS origin list must not be empty; "
+                        "separate origins with '|' (e.g. 'acme:key:https://a.com|https://b.com')."
+                    )
+                origins = tuple(listed)
+            mapping[token] = (site, origins)
         return mapping
+
+    @property
+    def site_tokens_map(self) -> dict[str, str]:
+        """Parse SITE_TOKENS into {token: site} for per-site chat authorization."""
+        return {
+            token: site for token, (site, _origins) in self.site_token_entries.items()
+        }
 
     model_config = {
         "env_file": ".env",

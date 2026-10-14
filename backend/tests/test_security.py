@@ -202,6 +202,35 @@ class TestSiteKey:
         with pytest.raises(ValueError):
             settings.site_tokens_map
 
+    def test_token_bound_to_origin_accepts_matching_origin(self, monkeypatch):
+        monkeypatch.setattr(settings, "SITE_TOKENS", "acme:key1:https://acme.com|https://shop.acme.com")
+        assert verify_site_key("key1", "https://shop.acme.com") == "acme"
+
+    def test_token_bound_to_origin_rejects_other_origin(self, monkeypatch):
+        monkeypatch.setattr(settings, "SITE_TOKENS", "acme:key1:https://acme.com")
+        with pytest.raises(HTTPException) as exc:
+            verify_site_key("key1", "https://copycat.example")
+        assert exc.value.status_code == 403
+
+    def test_token_bound_to_origin_rejects_missing_origin(self, monkeypatch):
+        monkeypatch.setattr(settings, "SITE_TOKENS", "acme:key1:https://acme.com")
+        with pytest.raises(HTTPException) as exc:
+            verify_site_key("key1", None)
+        assert exc.value.status_code == 403
+
+    def test_unbound_token_still_works_from_any_origin(self, monkeypatch):
+        monkeypatch.setattr(settings, "SITE_TOKENS", "acme:key1")
+        assert verify_site_key("key1", None) == "acme"
+
+    def test_origin_with_trailing_slash_still_matches(self, monkeypatch):
+        monkeypatch.setattr(settings, "SITE_TOKENS", "acme:key1:https://acme.com/")
+        assert verify_site_key("key1", "https://acme.com") == "acme"
+
+    def test_empty_origin_list_is_rejected(self, monkeypatch):
+        monkeypatch.setattr(settings, "SITE_TOKENS", "acme:key1:")
+        with pytest.raises(ValueError):
+            settings.site_token_entries
+
 
 class TestChatSchema:
     def test_client_supplied_transcript_is_rejected(self):
