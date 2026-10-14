@@ -124,7 +124,26 @@ export function useChat(apiUrl: string) {
           abortControllerRef.current.signal
         );
       } catch (err: any) {
-        if (err.name !== 'AbortError') {
+        if (err.name === 'AbortError') {
+          // User pressed Stop. Keep any partial text, mark the message as
+          // finished so the copy button appears, and drop the placeholder
+          // if nothing had been received yet.
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last && last.role === 'assistant') {
+              if (last.content) {
+                updated[updated.length - 1] = {
+                  ...last,
+                  isStreaming: false,
+                };
+              } else {
+                updated.pop();
+              }
+            }
+            return updated;
+          });
+        } else {
           const errorMsg =
             err.message || 'Failed to connect to the assistant.';
           setError(errorMsg);
