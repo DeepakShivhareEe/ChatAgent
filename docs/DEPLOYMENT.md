@@ -123,6 +123,7 @@ In production, always set:
 - `SITE_TOKENS` to one credential per embedding site — `site:token` or, preferably, `site:token:https://your-site.com|https://www.your-site.com` (this enforces `X-Site-Key` on `POST /chat`; leave empty only for local development)
 - `ADMIN_API_KEY` to a strong, unique value
 - `VITE_API_URL` to the public HTTPS URL of the backend before `docker compose up --build`
+- `EXPOSE_API_DOCS=false` (this hides `/docs`, `/redoc` and `/openapi.json`)
 - `DEBUG=false`
 - `RATE_LIMIT` to an appropriate value
 

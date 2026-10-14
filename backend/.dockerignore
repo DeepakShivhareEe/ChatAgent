@@ -1,0 +1,13 @@
+# Keep secrets and generated state out of the image. `COPY . .` in the
+# Dockerfile would otherwise bake backend/.env, the local virtualenv and the
+# ChromaDB files into the image layer, where they are readable by anyone with
+# the image.
+.env
+.env.*
+!.env.example
+data/
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/

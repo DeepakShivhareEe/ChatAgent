@@ -35,6 +35,11 @@ async def lifespan(app: FastAPI):
     logger.info("AI Website Assistant — Starting up")
     logger.info(f"Provider: {settings.AI_PROVIDER} | Model: {settings.MODEL_NAME}")
     logger.info("=" * 60)
+    if not settings.site_token_entries:
+        logger.warning(
+            "SITE_TOKENS is empty — POST /chat is open to any origin. Configure "
+            "one 'site:token:origin1|origin2' entry per embedding site in production."
+        )
     await initialize_services()
     yield
     await shutdown_services()
@@ -42,6 +47,8 @@ async def lifespan(app: FastAPI):
 
 
 # --- App ---
+# Docs *and* the raw schema are gated together: leaving openapi_url enabled
+# would still serve /openapi.json (with the full route list) when docs are off.
 app = FastAPI(
     title="AI Website Assistant API",
     description=(
@@ -52,6 +59,7 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs" if settings.EXPOSE_API_DOCS else None,
     redoc_url="/redoc" if settings.EXPOSE_API_DOCS else None,
+    openapi_url="/openapi.json" if settings.EXPOSE_API_DOCS else None,
 )
 
 

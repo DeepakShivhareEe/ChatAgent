@@ -56,6 +56,15 @@ async def test_health():
 
 
 @pytest.mark.anyio
+async def test_openapi_schema_follows_expose_api_docs():
+    """EXPOSE_API_DOCS=False must hide /openapi.json, not just /docs."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/openapi.json")
+    assert response.status_code == (200 if settings.EXPOSE_API_DOCS else 404)
+
+
+@pytest.mark.anyio
 async def test_chat_empty_query():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
