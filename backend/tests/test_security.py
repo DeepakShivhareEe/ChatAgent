@@ -68,6 +68,34 @@ class TestSanitizer:
         )
         assert "<script>" not in result
 
+    def _stream_join(self, chunks):
+        """Replicate the engine's streaming loop and return the emitted text."""
+        buffer = ""
+        out = []
+        for chunk in chunks:
+            buffer += chunk
+            emit, buffer = self.sanitizer.stream_split(buffer)
+            if emit:
+                out.append(self.sanitizer.sanitize_output(emit))
+        if buffer:
+            out.append(self.sanitizer.sanitize_output(buffer))
+        return "".join(out)
+
+    def test_stream_split_catches_tag_split_across_chunks(self):
+        out = self._stream_join(["<scr", "ipt>alert(1)</scr", "ipt>"])
+        assert "<script" not in out
+        assert "</script" not in out
+        assert "alert(1)" in out
+
+    def test_stream_split_preserves_normal_stream(self):
+        text = "Hello world. " * 50
+        chunks = [text[i:i + 7] for i in range(0, len(text), 7)]
+        assert self._stream_join(chunks) == text
+
+    def test_stream_split_does_not_stall_on_literal_lt(self):
+        payload = "a < b " + "x" * 400
+        assert self._stream_join([payload]) == payload
+
 
 class TestInjectionDetector:
     """Test prompt injection detection."""

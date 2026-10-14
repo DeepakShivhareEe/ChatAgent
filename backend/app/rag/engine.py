@@ -147,10 +147,23 @@ class RAGEngine:
             conversation_history=conversation_history,
         )
 
-        # Stream response
+        # Stream response. Hold back a small tail between chunks so a
+        # dangerous tag/link split across a chunk boundary is sanitized as a
+        # whole instead of slipping through in fragments.
+        buffer = ""
         async for chunk in self.provider.generate_stream(messages):
-            sanitized = self.sanitizer.sanitize_output(chunk)
-            yield {"type": "content", "content": sanitized}
+            buffer += chunk
+            emit, buffer = self.sanitizer.stream_split(buffer)
+            if emit:
+                sanitized = self.sanitizer.sanitize_output(emit)
+                if sanitized:
+                    yield {"type": "content", "content": sanitized}
+
+        # Flush whatever is still buffered when the provider stream ends.
+        if buffer:
+            sanitized = self.sanitizer.sanitize_output(buffer)
+            if sanitized:
+                yield {"type": "content", "content": sanitized}
 
         # Send sources
         sources = list({
