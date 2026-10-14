@@ -1,0 +1,16 @@
+# AI Website Assistant
+
+## Logs
+node_modules/
+dist/
+.env
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+venv/
+.venv/
+data/chromadb/
+*.egg-info/
+.DS_Store
+Thumbs.db
