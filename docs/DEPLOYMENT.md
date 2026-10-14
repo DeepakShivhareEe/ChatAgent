@@ -112,6 +112,14 @@ server {
 }
 ```
 
+If (and only if) the backend runs behind that proxy, also set
+`TRUST_PROXY_HEADERS=true` so the rate limiter can use the real client IP from
+`X-Forwarded-For`. The proxy must overwrite that header (the nginx config above
+does, via `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`).
+With the default `false` the direct socket address is used and client-supplied
+values are ignored — never enable it while the backend is reachable directly,
+because any client can forge the header and slip past the per-IP limit.
+
 ### SSL/TLS
 
 Use Let's Encrypt with certbot or deploy behind a cloud load balancer with managed certificates.
@@ -126,7 +134,8 @@ In production, always set:
 - `VITE_API_URL` to the public HTTPS URL of the backend before `docker compose up --build`
 - `EXPOSE_API_DOCS=false` (this hides `/docs`, `/redoc` and `/openapi.json`)
 - `DEBUG=false`
-- `RATE_LIMIT` to an appropriate value
+- `RATE_LIMIT` to an appropriate value — it is enforced per site **and** client IP, so one busy site cannot consume another site's allowance
+- `TRUST_PROXY_HEADERS=true` only when a trusted reverse proxy overwrites `X-Forwarded-For` (default `false`)
 
 The built browser bundle cannot use an internal Docker hostname such as
 `http://backend:8000`; it must use a URL reachable from visitors' browsers.

@@ -49,6 +49,27 @@ def enforce_site_tokens_configured() -> None:
     )
 
 
+def _entry_for_token(token: str) -> Optional[tuple[str, tuple[str, ...]]]:
+    """Return (site, allowed_origins) for a token, or None when unknown."""
+    candidate = token.encode("utf-8")
+    for known, entry in settings.site_token_entries.items():
+        if secrets.compare_digest(candidate, known.encode("utf-8")):
+            return entry
+    return None
+
+
+def site_for_token(token: Optional[str]) -> Optional[str]:
+    """Return the site a valid token belongs to, or None when unknown/disabled.
+
+    Used for attribution (per-site rate limiting); authorization still goes
+    through :func:`verify_site_key`.
+    """
+    if not token:
+        return None
+    entry = _entry_for_token(token)
+    return entry[0] if entry else None
+
+
 def verify_site_key(
     x_site_key: Optional[str] = Header(default=None),
     origin: Optional[str] = Header(default=None),
@@ -67,16 +88,16 @@ def verify_site_key(
     if not x_site_key:
         raise HTTPException(status_code=401, detail="Missing site API key.")
 
-    candidate = x_site_key.encode("utf-8")
-    for token, (site, allowed_origins) in entries.items():
-        if secrets.compare_digest(candidate, token.encode("utf-8")):
-            if allowed_origins and (
-                not origin or origin.rstrip("/") not in allowed_origins
-            ):
-                raise HTTPException(
-                    status_code=403,
-                    detail="Origin not allowed for this site key.",
-                )
-            return site
+    entry = _entry_for_token(x_site_key)
+    if entry is None:
+        raise HTTPException(status_code=401, detail="Invalid site API key.")
 
-    raise HTTPException(status_code=401, detail="Invalid site API key.")
+    site, allowed_origins = entry
+    if allowed_origins and (
+        not origin or origin.rstrip("/") not in allowed_origins
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Origin not allowed for this site key.",
+        )
+    return site

@@ -90,11 +90,12 @@ app = FastAPI(
 
 # --- Middleware ---
 
-# Rate limiting
+# Rate limiting — one budget per (site, client IP)
 app.add_middleware(
     RateLimiter,
     max_requests=settings.RATE_LIMIT,
     window_seconds=60,
+    trust_proxy_headers=settings.TRUST_PROXY_HEADERS,
 )
 app.add_middleware(SecurityHeadersMiddleware, max_request_bytes=settings.MAX_REQUEST_BYTES)
 

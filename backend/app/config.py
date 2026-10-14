@@ -111,7 +111,14 @@ class Settings(BaseSettings):
     RATE_LIMIT: int = Field(
         default=30,
         ge=1,
-        description="Maximum requests per minute per IP",
+        description="Maximum requests per minute per site and IP",
+    )
+    TRUST_PROXY_HEADERS: bool = Field(
+        default=False,
+        description=(
+            "Trust X-Forwarded-For for the client IP. Enable only behind a "
+            "reverse proxy that overwrites the header; clients can forge it."
+        ),
     )
     CORS_ORIGINS: str = Field(
         default="http://localhost:3000,http://localhost:5173",
