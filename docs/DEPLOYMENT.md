@@ -61,12 +61,17 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env
 
-# Run with uvicorn
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-
-# Or for production with multiple workers:
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+# Run with uvicorn — run a SINGLE worker (see warning below)
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
+
+> **Warning: run a single worker.** Rate limiting and conversation history are
+> stored **in memory inside the process** (`app/security/rate_limiter.py`,
+> `app/conversation/store.py`). With `--workers > 1`, each worker keeps its own
+> counters and conversation state, so rate limiting becomes ineffective and
+> users lose chat context whenever a request is handled by a different worker.
+> To run more than one worker, first move rate limiting and conversation
+> storage to a shared store such as Redis.
 
 ### Widget
 
@@ -125,7 +130,7 @@ The built browser bundle cannot use an internal Docker hostname such as
 
 ### Scaling
 
-- **Horizontal scaling**: Run multiple backend instances behind a load balancer. ChromaDB data must be shared (use a network volume or switch to a managed vector DB).
+- **Horizontal scaling**: Run multiple backend instances behind a load balancer. ChromaDB data must be shared (use a network volume or switch to a managed vector DB). **This also requires moving rate limiting and conversation history out of process memory into a shared store such as Redis** — otherwise each instance enforces its own limits and users lose chat context. Do not run multiple workers or instances until that shared store exists.
 - **Managed vector DB**: For production at scale, replace ChromaDB with Pinecone, Qdrant, or Weaviate by implementing the same interface in `app/vectordb/`.
 
 ---
