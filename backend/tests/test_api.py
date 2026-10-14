@@ -86,6 +86,72 @@ async def test_chat_invalid_site_key_is_unauthorized(monkeypatch):
     assert response.status_code == 401
 
 
+# --- CORS preflight ---
+# The widget sends `X-Site-Key`, so the browser preflights POST /chat first.
+
+def _allowed_origin() -> str:
+    """First configured origin (the middleware binds CORS_ORIGINS at import)."""
+    origins = settings.cors_origins_list
+    assert origins, "CORS_ORIGINS must be configured for the preflight tests."
+    return origins[0]
+
+
+@pytest.mark.anyio
+async def test_cors_preflight_allows_chat_headers():
+    origin = _allowed_origin()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.options(
+            "/chat",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "x-site-key,content-type",
+            },
+        )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+    allowed_headers = response.headers["access-control-allow-headers"].lower()
+    assert "x-site-key" in allowed_headers
+    assert "content-type" in allowed_headers
+    assert "post" in response.headers["access-control-allow-methods"].lower()
+
+
+@pytest.mark.anyio
+async def test_cors_preflight_rejects_disallowed_origin():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.options(
+            "/chat",
+            headers={
+                "Origin": "https://evil.example",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "x-site-key,content-type",
+            },
+        )
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
+
+
+@pytest.mark.anyio
+async def test_cors_preflight_rejects_unlisted_header():
+    origin = _allowed_origin()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.options(
+            "/chat",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "x-site-key,x-unlisted-header",
+            },
+        )
+    assert response.status_code == 400
+    assert "x-unlisted-header" not in response.headers.get(
+        "access-control-allow-headers", ""
+    ).lower()
+
+
 @pytest.mark.anyio
 async def test_search_empty_query(monkeypatch):
     monkeypatch.setattr(settings, "ADMIN_API_KEY", "test-admin-key")

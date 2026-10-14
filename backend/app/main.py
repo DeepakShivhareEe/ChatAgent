@@ -65,13 +65,16 @@ app.add_middleware(
 )
 app.add_middleware(SecurityHeadersMiddleware, max_request_bytes=settings.MAX_REQUEST_BYTES)
 
-# CORS
+# CORS — explicit allowlists (no wildcards). The widget sends a custom
+# `X-Site-Key` header, so browsers issue a preflight OPTIONS request before
+# POST /chat; both the header and the POST method must be allowed here or the
+# browser blocks every chat request.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Site-Key"],
 )
 
 
