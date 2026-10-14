@@ -7,10 +7,12 @@ import type { SSEEvent } from '../types';
 
 export class APIClient {
   private baseUrl: string;
+  private siteKey?: string;
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string, siteKey?: string) {
     // Remove trailing slash
     this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.siteKey = siteKey;
   }
 
   /**
@@ -25,7 +27,10 @@ export class APIClient {
   ): Promise<void> {
     const response = await fetch(`${this.baseUrl}/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this.siteKey ? { 'X-Site-Key': this.siteKey } : {}),
+      },
       body: JSON.stringify({
         query,
         conversation_id: conversationId,

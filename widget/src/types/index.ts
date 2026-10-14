@@ -14,6 +14,8 @@ export interface Message {
 export interface ChatWidgetProps {
   /** Backend API URL (e.g., "http://localhost:8000") */
   apiUrl: string;
+  /** Per-site API key sent as X-Site-Key (required when the backend sets SITE_TOKENS) */
+  siteKey?: string;
   /** Widget title */
   title?: string;
   /** Widget subtitle */

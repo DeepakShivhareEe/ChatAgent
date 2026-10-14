@@ -117,6 +117,13 @@ class Settings(BaseSettings):
         default="http://localhost:3000,http://localhost:5173",
         description="Comma-separated allowed CORS origins",
     )
+    SITE_TOKENS: str = Field(
+        default="",
+        description=(
+            "Comma-separated 'site:token' pairs for per-site chat access "
+            "(e.g. 'acme:key1,beta:key2'). When empty, POST /chat is open."
+        ),
+    )
     ALLOW_CUSTOM_INGEST_DIRECTORY: bool = Field(
         default=False,
         description="Allow an admin to ingest a directory other than KNOWLEDGE_DIRECTORY",
@@ -148,6 +155,23 @@ class Settings(BaseSettings):
         if "*" in origins and not self.DEBUG:
             raise ValueError("CORS_ORIGINS cannot contain '*' when DEBUG is false.")
         return origins
+
+    @property
+    def site_tokens_map(self) -> dict[str, str]:
+        """Parse SITE_TOKENS into {token: site} for per-site chat authorization."""
+        mapping: dict[str, str] = {}
+        for entry in self.SITE_TOKENS.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            site, sep, token = entry.partition(":")
+            site, token = site.strip(), token.strip()
+            if not sep or not site or not token:
+                raise ValueError(
+                    "SITE_TOKENS entries must be 'site:token' pairs separated by commas."
+                )
+            mapping[token] = site
+        return mapping
 
     model_config = {
         "env_file": ".env",

@@ -11,14 +11,14 @@ function generateId(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function useChat(apiUrl: string) {
+export function useChat(apiUrl: string, siteKey?: string) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const apiClient = useRef(new APIClient(apiUrl));
+  const apiClient = useRef(new APIClient(apiUrl, siteKey));
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const sendMessage = useCallback(

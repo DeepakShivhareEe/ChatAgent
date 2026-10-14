@@ -10,6 +10,7 @@ import widgetStyles from './styles/index.css?inline';
 
 const ATTRIBUTE_NAMES = [
   'api-url',
+  'site-key',
   'title',
   'subtitle',
   'theme',
@@ -77,6 +78,7 @@ class AIWebsiteAssistantElement extends HTMLElement {
       <ChatWidget
         key={apiUrl}
         apiUrl={apiUrl}
+        siteKey={this.getAttribute('site-key') || undefined}
         title={this.getAttribute('title') || undefined}
         subtitle={this.getAttribute('subtitle') || undefined}
         theme={theme === 'light' || theme === 'dark' ? theme : undefined}

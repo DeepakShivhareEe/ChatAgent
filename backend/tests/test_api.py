@@ -65,6 +65,28 @@ async def test_chat_empty_query():
 
 
 @pytest.mark.anyio
+async def test_chat_missing_site_key_is_unauthorized(monkeypatch):
+    monkeypatch.setattr(settings, "SITE_TOKENS", "acme:secret-token")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/chat", json={"query": "hello"})
+    assert response.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_chat_invalid_site_key_is_unauthorized(monkeypatch):
+    monkeypatch.setattr(settings, "SITE_TOKENS", "acme:secret-token")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/chat",
+            headers={"X-Site-Key": "wrong-token"},
+            json={"query": "hello"},
+        )
+    assert response.status_code == 401
+
+
+@pytest.mark.anyio
 async def test_search_empty_query(monkeypatch):
     monkeypatch.setattr(settings, "ADMIN_API_KEY", "test-admin-key")
     transport = ASGITransport(app=app)

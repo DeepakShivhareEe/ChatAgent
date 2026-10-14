@@ -20,6 +20,7 @@ const DEFAULT_PROMPTS = [
 
 export function ChatWidget({
   apiUrl,
+  siteKey,
   title = 'AI Assistant',
   subtitle = 'Ask me anything about the website',
   theme: initialTheme,
@@ -36,7 +37,7 @@ export function ChatWidget({
     sendMessage,
     clearConversation,
     stopStreaming,
-  } = useChat(apiUrl);
+  } = useChat(apiUrl, siteKey);
 
   const handleToggle = useCallback(() => {
     setIsOpen((prev) => !prev);

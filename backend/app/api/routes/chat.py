@@ -5,13 +5,14 @@ Chat endpoint — streaming RAG responses via Server-Sent Events.
 import json
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
 from app.models.schemas import ChatRequest
 from app.models.exceptions import AppException
 from app.rag.engine import RAGEngine
 from app.api.dependencies import get_conversation_store, get_injection_detector, get_rag_engine, get_sanitizer
+from app.security.site_key import verify_site_key
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,7 @@ async def _sse_stream(rag_engine: RAGEngine, request: ChatRequest, http_request:
         yield f"event: error\ndata: {error_event}\n\n"
 
 
-@router.post("/chat", tags=["Chat"])
+@router.post("/chat", tags=["Chat"], dependencies=[Depends(verify_site_key)])
 async def chat(request: ChatRequest, http_request: Request):
     """
     Process a user query through the RAG pipeline.
