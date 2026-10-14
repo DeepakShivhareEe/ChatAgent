@@ -12,6 +12,7 @@ from app.models.schemas import ChatRequest
 from app.models.exceptions import AppException
 from app.rag.engine import RAGEngine
 from app.api.dependencies import get_conversation_store, get_injection_detector, get_rag_engine, get_sanitizer
+from app.security.redaction import redact_secrets
 from app.security.site_key import verify_site_key
 
 logger = logging.getLogger(__name__)
@@ -51,13 +52,22 @@ async def _sse_stream(rag_engine: RAGEngine, request: ChatRequest, http_request:
             yield f"event: {event_type}\ndata: {data}\n\n"
 
     except AppException as e:
+        # 4xx messages are written for the user; 5xx messages (upstream provider
+        # text, internal paths) are logged server-side and replaced with a
+        # generic message before they reach the browser.
+        log = logger.error if e.status_code >= 500 else logger.warning
+        log(
+            "Chat stream failed (%s): %s",
+            e.status_code,
+            redact_secrets(e.message),
+        )
         error_event = json.dumps({
             "type": "error",
-            "message": e.message,
+            "message": e.client_message,
         })
         yield f"event: error\ndata: {error_event}\n\n"
     except Exception as e:
-        logger.exception("Unexpected error in chat stream")
+        logger.exception("Unexpected error in chat stream: %s", redact_secrets(str(e)))
         error_event = json.dumps({
             "type": "error",
             "message": "An unexpected error occurred. Please try again.",

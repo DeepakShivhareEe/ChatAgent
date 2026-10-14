@@ -161,3 +161,12 @@ All errors follow this format:
 | 429 | Rate limit exceeded |
 | 500 | Internal server error |
 | 502 | LLM provider error |
+
+### What `detail` contains
+
+On **4xx** responses `detail` is written for the user (validation, injection,
+rate limit, auth). On **5xx** responses it is a generic message: upstream
+provider text, internal paths and parser errors stay in the server log. The
+log keeps the full error with credential-looking text masked (never API keys,
+tokens or user message content). The streamed `error` event from `POST /chat`
+follows the same rule.

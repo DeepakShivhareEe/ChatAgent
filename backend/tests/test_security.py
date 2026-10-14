@@ -2,13 +2,23 @@
 Tests for security components — sanitizer and injection detector.
 """
 
+import logging
+
 import pytest
 from fastapi import HTTPException
 from app.config import settings
+from app.main import _RedactSecretsFilter
+from app.security.redaction import redact_secrets
 from app.security.sanitizer import Sanitizer
 from app.security.injection import InjectionDetector
 from app.security.site_key import verify_site_key
-from app.models.exceptions import InjectionDetectedError
+from app.models.exceptions import (
+    GENERIC_ERROR_MESSAGE,
+    InjectionDetectedError,
+    ProviderError,
+    ProviderNotFoundError,
+    VectorDBError,
+)
 from app.conversation.store import ConversationStore
 from app.models.schemas import ChatRequest
 from pydantic import ValidationError
@@ -267,6 +277,51 @@ class TestSiteKey:
         monkeypatch.setattr(settings, "SITE_TOKENS", "acme:key1:")
         with pytest.raises(ValueError):
             settings.site_token_entries
+
+
+class TestRedaction:
+    """Credential-looking text must not reach logs."""
+
+    def test_provider_key_shapes_are_masked(self):
+        secret = "sk-proj-FAKEfakefake1234567890"
+        assert secret not in redact_secrets(f"Incorrect API key provided: {secret}.")
+        assert "AIzaSyFAKEfakefake123" not in redact_secrets("key AIzaSyFAKEfakefake123")
+        assert "gsk_FAKEfakefake123" not in redact_secrets("key gsk_FAKEfakefake123")
+
+    def test_bearer_and_assignment_forms_are_masked(self):
+        assert "abc123SECRET" not in redact_secrets("Authorization: Bearer abc123SECRET")
+        assert "hunter2hunter2" not in redact_secrets("api_key=hunter2hunter2")
+
+    def test_ordinary_text_is_untouched(self):
+        text = "Retrieved 3 chunks for streaming query"
+        assert redact_secrets(text) == text
+
+    def test_log_filter_masks_message_and_args(self):
+        record = logging.LogRecord(
+            "test", logging.ERROR, __file__, 1,
+            "provider said: %s", ("key sk-FAKEfakefake123456",), None,
+        )
+        assert _RedactSecretsFilter().filter(record) is True
+        assert "sk-FAKEfakefake123456" not in record.getMessage()
+        assert "[redacted-key]" in record.getMessage()
+
+
+class TestClientErrorMessage:
+    """5xx details stay server-side; 4xx messages stay helpful."""
+
+    def test_server_errors_are_generic(self):
+        error = ProviderError("Incorrect API key provided: sk-FAKEfakefake123456", provider="openai")
+        assert error.status_code == 502
+        assert error.client_message == GENERIC_ERROR_MESSAGE
+        assert "sk-" not in error.client_message
+
+    def test_internal_errors_are_generic(self):
+        error = VectorDBError("failed reading /srv/app/data/chromadb")
+        assert error.client_message == GENERIC_ERROR_MESSAGE
+
+    def test_client_errors_keep_their_message(self):
+        assert InjectionDetectedError().client_message == "Potentially harmful input detected."
+        assert ProviderNotFoundError("nope").status_code == 400
 
 
 class TestChatSchema:

@@ -2,10 +2,14 @@
 Tests for API endpoints.
 """
 
+import logging
+import types
+
 import pytest
 from httpx import AsyncClient, ASGITransport
 from app.main import app
 from app.config import settings
+from app.models.exceptions import GENERIC_ERROR_MESSAGE, ProviderError, VectorDBError
 
 
 @pytest.fixture
@@ -93,6 +97,67 @@ async def test_chat_invalid_site_key_is_unauthorized(monkeypatch):
             json={"query": "hello"},
         )
     assert response.status_code == 401
+
+
+class _FailingRAGEngine:
+    """Streams nothing and fails the way a provider SDK does, echoing request details."""
+
+    def __init__(self, message: str):
+        self._message = message
+
+    async def query_stream(self, user_query, conversation_history, conversation_id):
+        raise ProviderError(self._message, provider="openai")
+        yield  # pragma: no cover - makes this an async generator
+
+
+@pytest.mark.anyio
+async def test_chat_provider_error_is_generic_and_never_leaks(monkeypatch, caplog):
+    caplog.set_level(logging.INFO)
+    secret = "sk-FAKEfakefake1234567890"
+    monkeypatch.setattr(settings, "SITE_TOKENS", "")
+    monkeypatch.setattr(
+        "app.api.routes.chat.get_rag_engine",
+        lambda: _FailingRAGEngine(
+            f"Error code: 401 - Incorrect API key provided: {secret}. api_key={secret}"
+        ),
+    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/chat", json={"query": "hello"})
+    assert response.status_code == 200  # the stream itself already started
+    assert secret not in response.text
+    assert GENERIC_ERROR_MESSAGE in response.text
+    # The original error is kept server-side, with the credential masked.
+    assert secret not in caplog.text
+    assert "Incorrect API key provided" in caplog.text
+    assert "[redacted-key]" in caplog.text
+
+
+@pytest.mark.anyio
+async def test_http_error_details_are_generic_and_never_leak(monkeypatch, caplog):
+    caplog.set_level(logging.INFO)
+    secret = "sk-FAKEfakefake1234567890"
+    monkeypatch.setattr(settings, "ADMIN_API_KEY", "test-admin-key")
+
+    async def boom(query_text, n_results=5):
+        raise VectorDBError(f"failed reading /srv/app/data api_key={secret}")
+
+    monkeypatch.setattr(
+        "app.api.routes.search.get_db_client",
+        lambda: types.SimpleNamespace(query=boom),
+    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/search",
+            headers={"X-Admin-Key": "test-admin-key"},
+            json={"query": "pricing", "top_k": 3},
+        )
+    assert response.status_code == 500
+    assert response.json()["detail"] == GENERIC_ERROR_MESSAGE
+    assert secret not in response.text
+    assert "/srv/app/data" not in response.text
+    assert secret not in caplog.text
 
 
 class _FakeRAGEngine:

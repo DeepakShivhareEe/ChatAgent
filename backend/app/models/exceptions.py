@@ -2,6 +2,10 @@
 Custom exception classes for the application.
 """
 
+# Sent to the client for any 5xx-class failure. Internal messages (upstream
+# provider text, file paths, parser errors) must not leave the server.
+GENERIC_ERROR_MESSAGE = "An unexpected server error occurred. Please try again."
+
 
 class AppException(Exception):
     """Base application exception."""
@@ -10,6 +14,18 @@ class AppException(Exception):
         self.message = message
         self.status_code = status_code
         super().__init__(self.message)
+
+    @property
+    def client_message(self) -> str:
+        """Message that is safe to return to the client.
+
+        Client errors (4xx) are written for the user and stay as they are;
+        server errors (5xx) are replaced with a generic message and logged in
+        full, server-side only.
+        """
+        if self.status_code >= 500:
+            return GENERIC_ERROR_MESSAGE
+        return self.message
 
 
 class ProviderError(AppException):

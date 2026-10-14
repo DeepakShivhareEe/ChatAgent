@@ -16,6 +16,7 @@ from app.api.dependencies import initialize_services, shutdown_services
 from app.api.routes import health, chat, ingest, search
 from app.security.rate_limiter import RateLimiter
 from app.security.headers import SecurityHeadersMiddleware
+from app.security.redaction import redact_secrets
 from app.models.exceptions import AppException
 
 # --- Logging ---
@@ -25,6 +26,31 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+
+class _RedactSecretsFilter(logging.Filter):
+    """Strip credential-looking text from every log record before it is written."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = redact_secrets(record.msg)
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                redact_secrets(arg) if isinstance(arg, str) else arg
+                for arg in record.args
+            )
+        elif isinstance(record.args, dict):
+            record.args = {
+                key: (redact_secrets(value) if isinstance(value, str) else value)
+                for key, value in record.args.items()
+            }
+        return True
+
+
+# basicConfig created the root handler; filter at the handler so records from
+# every logger (including uvicorn's child loggers) are redacted.
+for _handler in logging.getLogger().handlers:
+    _handler.addFilter(_RedactSecretsFilter())
 
 
 # --- Lifespan ---
@@ -89,10 +115,22 @@ app.add_middleware(
 # --- Exception handlers ---
 @app.exception_handler(AppException)
 async def app_exception_handler(request: Request, exc: AppException):
-    """Handle custom application exceptions."""
+    """Handle custom application exceptions.
+
+    The client only sees ``exc.client_message``: 4xx messages are written for
+    the user, while 5xx messages stay in the server log. Upstream text and file
+    paths must not reach the browser.
+    """
+    if exc.status_code >= 500:
+        logger.error(
+            "Application error %s on %s: %s",
+            exc.status_code,
+            request.url.path,
+            redact_secrets(exc.message),
+        )
     return JSONResponse(
         status_code=exc.status_code,
-        content={"detail": exc.message},
+        content={"detail": exc.client_message},
     )
 
 
