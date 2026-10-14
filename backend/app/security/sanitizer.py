@@ -35,6 +35,11 @@ class Sanitizer:
     # may delay output.
     STREAM_HOLD_CHARS = 256
 
+    # Longest unterminated markdown link that may be held back. A label longer
+    # than this is emitted with the link broken instead of delaying output
+    # further (see stream_split).
+    MAX_LINK_HOLD_CHARS = 2048
+
     def sanitize_input(self, text: str) -> str:
         """
         Sanitize user input before processing.
@@ -91,7 +96,13 @@ class Sanitizer:
         The trailing STREAM_HOLD_CHARS characters are held back so a dangerous
         tag/link straddling a chunk boundary is sanitized as a whole. In
         addition, the cut point is never placed inside an unterminated
-        ``<...`` sequence, so an HTML tag can never be emitted in fragments.
+        ``<...`` sequence, nor after an unterminated ``[`` label, because
+        ``sanitize_output`` only rewrites a markdown link when it sees the whole
+        ``[label](javascript:`` pattern at once — a label longer than the hold
+        window would otherwise be emitted in pieces and never sanitized. A
+        label longer than MAX_LINK_HOLD_CHARS is emitted with its ``[`` escaped
+        instead of held forever, which fails closed: the pieces can no longer
+        combine into a clickable link.
 
         Returns:
             (emit, remainder) — ``emit`` can be sanitized and sent to the
@@ -112,5 +123,16 @@ class Sanitizer:
             and (cut - last_lt) <= self.STREAM_HOLD_CHARS
         ):
             cut = last_lt
+
+        # Hold back an unterminated markdown link label so the link is
+        # assembled before it is sanitized.
+        last_open = buffer.rfind("[", 0, cut)
+        if last_open != -1 and "]" not in buffer[last_open:cut]:
+            if len(buffer) - last_open <= self.MAX_LINK_HOLD_CHARS:
+                cut = last_open
+            else:
+                # The bounded hold is exhausted: emit the text with the opening
+                # bracket escaped so the label cannot become a link later.
+                return buffer[:last_open] + "\\" + buffer[last_open:cut], buffer[cut:]
 
         return buffer[:cut], buffer[cut:]

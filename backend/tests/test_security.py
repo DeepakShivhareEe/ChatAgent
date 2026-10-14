@@ -99,6 +99,43 @@ class TestSanitizer:
         payload = "a < b " + "x" * 400
         assert self._stream_join([payload]) == payload
 
+    def test_stream_split_catches_link_with_over_long_label(self):
+        # A label longer than the hold-back window used to be emitted in pieces,
+        # so the assembled "[label](javascript:" was never sanitized as a whole.
+        label = "x" * (Sanitizer.STREAM_HOLD_CHARS * 3)
+        payload = f"[{label}](javascript:alert(1))"
+        out = self._stream_join([payload[:300], payload[300:]])
+        assert "](javascript:" not in out
+        assert "alert(1)" in out
+
+    def test_stream_split_catches_link_with_long_label_split_fine(self):
+        # Same payload arriving byte by byte must also be caught.
+        label = "z" * (Sanitizer.STREAM_HOLD_CHARS * 2)
+        payload = f"[{label}](javascript:alert(1))"
+        out = self._stream_join([char for char in payload])
+        assert "](javascript:" not in out
+        assert "alert(1)" in out
+
+    def test_stream_split_breaks_link_when_hold_limit_is_hit(self):
+        # Fail closed: an unterminated label beyond the bounded hold is emitted
+        # with its '[' escaped, so it can never be completed into a link, and
+        # output keeps flowing instead of stalling.
+        buffer = "[" + "y" * (Sanitizer.MAX_LINK_HOLD_CHARS + 100)
+        emit, remainder = self.sanitizer.stream_split(buffer)
+        assert emit.startswith("\\[")
+        assert remainder
+        assert "[" not in emit[2:]  # no second, unescaped bracket opener
+
+    def test_stream_split_escapes_bracket_past_the_hold_limit(self):
+        # Whatever the chunking, a label past the hold limit is emitted with an
+        # escaped '[', so the client can never reassemble it into a link.
+        label = "w" * (Sanitizer.MAX_LINK_HOLD_CHARS + 500)
+        payload = f"[{label}](javascript:alert(1))"
+        out = self._stream_join(
+            [payload[i:i + 64] for i in range(0, len(payload), 64)]
+        )
+        assert "[" not in out.replace("\\[", "")
+
 
 class TestInjectionDetector:
     """Test prompt injection detection."""
