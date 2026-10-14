@@ -17,6 +17,7 @@ from app.api.routes import health, chat, ingest, search
 from app.security.rate_limiter import RateLimiter
 from app.security.headers import SecurityHeadersMiddleware
 from app.security.redaction import redact_secrets
+from app.security.site_key import enforce_site_tokens_configured
 from app.models.exceptions import AppException
 
 # --- Logging ---
@@ -61,11 +62,9 @@ async def lifespan(app: FastAPI):
     logger.info("AI Website Assistant — Starting up")
     logger.info(f"Provider: {settings.AI_PROVIDER} | Model: {settings.MODEL_NAME}")
     logger.info("=" * 60)
-    if not settings.site_token_entries:
-        logger.warning(
-            "SITE_TOKENS is empty — POST /chat is open to any origin. Configure "
-            "one 'site:token:origin1|origin2' entry per embedding site in production."
-        )
+    # Fails fast in production (DEBUG=false) when SITE_TOKENS is empty, before
+    # any model or vector store is loaded.
+    enforce_site_tokens_configured()
     await initialize_services()
     yield
     await shutdown_services()

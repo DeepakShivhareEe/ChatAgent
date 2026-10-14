@@ -11,7 +11,7 @@ from app.main import _RedactSecretsFilter
 from app.security.redaction import redact_secrets
 from app.security.sanitizer import Sanitizer
 from app.security.injection import InjectionDetector
-from app.security.site_key import verify_site_key
+from app.security.site_key import enforce_site_tokens_configured, verify_site_key
 from app.models.exceptions import (
     GENERIC_ERROR_MESSAGE,
     InjectionDetectedError,
@@ -277,6 +277,29 @@ class TestSiteKey:
         monkeypatch.setattr(settings, "SITE_TOKENS", "acme:key1:")
         with pytest.raises(ValueError):
             settings.site_token_entries
+
+
+class TestSiteTokensStartupCheck:
+    """An empty SITE_TOKENS is fine in development, fatal in production."""
+
+    def test_refuses_to_start_in_production(self, monkeypatch):
+        monkeypatch.setattr(settings, "DEBUG", False)
+        monkeypatch.setattr(settings, "SITE_TOKENS", "")
+        with pytest.raises(RuntimeError) as exc:
+            enforce_site_tokens_configured()
+        assert "SITE_TOKENS is empty" in str(exc.value)
+
+    def test_warns_but_starts_in_development(self, monkeypatch, caplog):
+        monkeypatch.setattr(settings, "DEBUG", True)
+        monkeypatch.setattr(settings, "SITE_TOKENS", "")
+        with caplog.at_level(logging.WARNING):
+            enforce_site_tokens_configured()
+        assert "SITE_TOKENS is empty" in caplog.text
+
+    def test_starts_in_production_when_configured(self, monkeypatch):
+        monkeypatch.setattr(settings, "DEBUG", False)
+        monkeypatch.setattr(settings, "SITE_TOKENS", "acme:key1:https://acme.com")
+        enforce_site_tokens_configured()
 
 
 class TestRedaction:

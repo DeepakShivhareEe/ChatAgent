@@ -121,6 +121,7 @@ Use Let's Encrypt with certbot or deploy behind a cloud load balancer with manag
 In production, always set:
 - `CORS_ORIGINS` to your specific domain(s)
 - `SITE_TOKENS` to one credential per embedding site — `site:token` or, preferably, `site:token:https://your-site.com|https://www.your-site.com` (this enforces `X-Site-Key` on `POST /chat`; leave empty only for local development)
+- `DEBUG=true` **only** for local development — with `DEBUG=false` the backend refuses to start while `SITE_TOKENS` is empty, so `/chat` cannot be left open by accident
 - `ADMIN_API_KEY` to a strong, unique value
 - `VITE_API_URL` to the public HTTPS URL of the backend before `docker compose up --build`
 - `EXPOSE_API_DOCS=false` (this hides `/docs`, `/redoc` and `/openapi.json`)

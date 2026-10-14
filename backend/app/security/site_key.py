@@ -12,12 +12,41 @@ another site. Bound tokens require a matching `Origin` header and are refused
 with `403` when it is missing or different.
 """
 
+import logging
 import secrets
 from typing import Optional
 
 from fastapi import Header, HTTPException
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+def enforce_site_tokens_configured() -> None:
+    """Refuse to start in production when `SITE_TOKENS` is empty.
+
+    Without tokens `POST /chat` answers anyone from any origin, which is
+    convenient for local work but is a misconfiguration in production. `DEBUG`
+    is the existing mode switch (`true` = development), so development keeps
+    the warning while production fails fast instead of running open.
+    """
+    if settings.site_token_entries:
+        return
+
+    if settings.DEBUG:
+        logger.warning(
+            "SITE_TOKENS is empty — POST /chat is open to any origin "
+            "(development mode; set SITE_TOKENS before production)."
+        )
+        return
+
+    raise RuntimeError(
+        "SITE_TOKENS is empty while DEBUG is false: refusing to start so that "
+        "POST /chat is not left open to any origin. Configure at least one "
+        "'site:token:origin1|origin2' entry, or set DEBUG=true for local "
+        "development."
+    )
 
 
 def verify_site_key(
